@@ -48,11 +48,14 @@ const PERIODS = ["ALL","1 Q","2 Q","3 Q","4 Q","CT"]
 const PERIOD_LABEL: Record<string,string> = {"ALL":"Tutta partita","1 Q":"Q1","2 Q":"Q2","3 Q":"Q3","4 Q":"Q4","CT":"CT"}
 
 const MODES = {
-  playcalls:  { url: "/api/playcalls",  field: "play_call" as const,  label: "Play Call",  title: "Play Call — clicca per analizzare" },
-  situations: { url: "/api/situations", field: "situation" as const, label: "Situation", title: "Situation — clicca per analizzare" },
-  players:    { url: "/api/players",    field: "player" as const,    label: "Giocatori", title: "Giocatori — clicca per analizzare" },
+  playcalls:      { url: "/api/playcalls",       field: "play_call" as const, label: "Play Call",       title: "Play Call — clicca per analizzare" },
+  situations:     { url: "/api/situations",      field: "situation" as const, label: "Situation",       title: "Situation — clicca per analizzare" },
+  players:        { url: "/api/players",         field: "player" as const,    label: "Oncourt",         title: "Oncourt — clicca per analizzare" },
+  difesa:         { url: "/api/difesa",          field: "play_call" as const, label: "Difesa",          title: "Difesa — Play Call avversari, clicca per analizzare" },
+  players_difesa: { url: "/api/players-difesa",  field: "player" as const,    label: "Difesa Oncourt",  title: "Difesa Oncourt — clicca per analizzare" },
 }
 type Mode = keyof typeof MODES
+const isDefense = (mode: Mode) => mode === "difesa" || mode === "players_difesa"
 
 function entryName(d: EntryData, mode: Mode): string {
   return d[MODES[mode].field] ?? ""
@@ -149,12 +152,13 @@ function CrossTable({ data }: { data: Record<string, Record<string, number>> }) 
 
 // ── Summary table: una riga per play call / situation / giocatore ────────────
 
-type SortKey = "name" | "total" | "possessions" | "ppp" | "quality" | "paint" | "broken"
+type SortKey = "name" | "total" | "points" | "possessions" | "ppp" | "quality" | "paint" | "broken"
 
 function sortValue(r: { name: string; s: PeriodStats }, key: SortKey): number | string {
   switch (key) {
     case "name":         return r.name
     case "total":        return r.s.total
+    case "points":       return r.s.ppp.points
     case "possessions":  return r.s.ppp.possessions
     case "ppp":          return r.s.ppp.ppp ?? -Infinity
     case "quality":      return r.s.quality_avg ?? -Infinity
@@ -196,6 +200,8 @@ function SummaryTable({ data, mode, period, selected, onSelect }: { data: EntryD
     </th>
   )
 
+  const defense = isDefense(mode)
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs border-collapse">
@@ -204,29 +210,32 @@ function SummaryTable({ data, mode, period, selected, onSelect }: { data: EntryD
             <Th label={MODES[mode].label} k="name" align="left" />
             <Th label="Giocate" k="total" />
             <Th label="Frequenza" k="total" color="text-yellow-600" />
+            <Th label="Punti" k="points" />
             <Th label="Tiri/Possessi" k="possessions" />
-            <Th label="PPP" k="ppp" />
+            <Th label={defense ? "PPP Concesso" : "PPP"} k="ppp" />
             <Th label="Quality Shot" k="quality" />
             <Th label="Paint Touch" k="paint" />
-            <Th label="Broken Play" k="broken" />
+            {!defense && <Th label="Broken Play" k="broken" />}
           </tr>
         </thead>
         <tbody>
           {rows.map(({ name, s }, i) => {
             const isSelected = name === selected
-            const pppColor = s.ppp.ppp == null || pppAvg == null ? "text-gray-300"
-              : s.ppp.ppp > pppAvg ? "text-green-500" : s.ppp.ppp < pppAvg ? "text-red-500" : "text-gray-300"
+            const pppBetter = s.ppp.ppp != null && pppAvg != null && (defense ? s.ppp.ppp < pppAvg : s.ppp.ppp > pppAvg)
+            const pppWorse  = s.ppp.ppp != null && pppAvg != null && (defense ? s.ppp.ppp > pppAvg : s.ppp.ppp < pppAvg)
+            const pppColor = pppBetter ? "text-green-500" : pppWorse ? "text-red-500" : "text-gray-300"
             return (
               <tr key={i} onClick={() => onSelect(name === selected ? "" : name)}
                 className={`cursor-pointer hover:bg-gray-800/60 transition-colors ${i % 2 === 1 ? "bg-gray-800/30" : ""} ${isSelected ? "bg-red-600/20" : ""}`}>
                 <td className="py-1.5 pr-4 text-gray-200 font-medium">{name}</td>
                 <td className="py-1.5 px-2 text-center text-white font-bold">{s.total}</td>
                 <td className="py-1.5 px-2 text-center text-yellow-500">{totalAll ? Math.round(s.total / totalAll * 100) : 0}%</td>
+                <td className="py-1.5 px-2 text-center text-gray-300">{s.ppp.points}</td>
                 <td className="py-1.5 px-2 text-center text-gray-300">{s.ppp.possessions}</td>
                 <td className={`py-1.5 px-2 text-center font-bold ${pppColor}`}>{s.ppp.ppp ?? "—"}</td>
                 <td className="py-1.5 px-2 text-center text-gray-300">{s.quality_avg ?? "—"}</td>
                 <td className="py-1.5 px-2 text-center text-gray-300">{s.paint_touch_n} <span className="text-gray-500">({s.total ? Math.round(s.paint_touch_n / s.total * 100) : 0}%)</span></td>
-                <td className="py-1.5 px-2 text-center text-gray-300">{s.broken_play} <span className="text-gray-500">({s.total ? Math.round(s.broken_play / s.total * 100) : 0}%)</span></td>
+                {!defense && <td className="py-1.5 px-2 text-center text-gray-300">{s.broken_play} <span className="text-gray-500">({s.total ? Math.round(s.broken_play / s.total * 100) : 0}%)</span></td>}
               </tr>
             )
           })}
@@ -255,6 +264,7 @@ export default function DashboardPage() {
 
   const pc = useMemo(() => selected ? data.find(d => entryName(d, mode) === selected) ?? null : null, [data, selected, mode])
   const pcStats = pc ? stats(pc, period) : null
+  const defense = isDefense(mode)
 
   const filteredData = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -354,10 +364,10 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {[
                 { l: "Azioni totali",   v: pcStats.total, sub: "" },
-                { l: "PPP",             v: pcStats.ppp.ppp ?? "—", sub: pcStats.ppp.possessions ? `${pcStats.ppp.points} pt / ${pcStats.ppp.possessions} poss` : "" },
+                { l: defense ? "PPP Concesso" : "PPP", v: pcStats.ppp.ppp ?? "—", sub: pcStats.ppp.possessions ? `${pcStats.ppp.points} pt / ${pcStats.ppp.possessions} poss` : "" },
                 { l: "Paint Touch",     v: `${pcStats.paint_touch_n} (${pcStats.total ? Math.round(pcStats.paint_touch_n/pcStats.total*100) : 0}%)`, sub: "" },
-                { l: "Quality media",   v: pcStats.quality_avg ?? "—", sub: "" },
-                { l: "Broken Play",     v: `${pcStats.broken_play} (${pcStats.total ? Math.round(pcStats.broken_play/pcStats.total*100) : 0}%)`, sub: "" },
+                { l: defense ? "Quality avversari" : "Quality media", v: pcStats.quality_avg ?? "—", sub: "" },
+                ...(defense ? [] : [{ l: "Broken Play", v: `${pcStats.broken_play} (${pcStats.total ? Math.round(pcStats.broken_play/pcStats.total*100) : 0}%)`, sub: "" }]),
               ].map(({l,v,sub}) => (
                 <div key={l} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
                   <p className="text-gray-400 text-xs uppercase tracking-widest mb-1">{l}</p>
@@ -370,21 +380,21 @@ export default function DashboardPage() {
             {/* Distribuzioni */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               <Card title="Results"><DistTable data={pcStats.results} total={pcStats.total} /></Card>
-              <Card title="Situation"><DistTable data={pcStats.situations} total={pcStats.total} /></Card>
+              <Card title={defense ? "D Situation" : "Situation"}><DistTable data={pcStats.situations} total={pcStats.total} /></Card>
               <Card title="Shot Location"><DistTable data={pcStats.shot_locations} total={pcStats.total} /></Card>
-              <Card title="O Coverages"><DistTable data={pcStats.o_coverages} total={pcStats.total} /></Card>
+              <Card title={defense ? "D Coverages" : "O Coverages"}><DistTable data={pcStats.o_coverages} total={pcStats.total} /></Card>
               <Card title="Quality Shot"><DistTable data={pcStats.quality} total={pcStats.total} /></Card>
               <Card title="Paint Touches"><DistTable data={pcStats.paint_touches} total={pcStats.total} /></Card>
-              <Card title="Pressing"><DistTable data={pcStats.pressing} total={pcStats.total} /></Card>
-              <Card title="Broken Play"><DistTable data={pcStats.broken_play_dist} total={pcStats.total} /></Card>
+              {!defense && <Card title="Pressing"><DistTable data={pcStats.pressing} total={pcStats.total} /></Card>}
+              {!defense && <Card title="Broken Play"><DistTable data={pcStats.broken_play_dist} total={pcStats.total} /></Card>}
             </div>
 
             {/* Legami */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Card title="Situation × Results"><CrossTable data={pcStats.sit_x_results} /></Card>
-              <Card title="O Coverages × Results"><CrossTable data={pcStats.cov_x_results} /></Card>
-              <Card title="Situation × Paint Touches"><CrossTable data={pcStats.sit_x_paint} /></Card>
-              <Card title="Situation × Quality Shot"><CrossTable data={pcStats.sit_x_quality} /></Card>
+              <Card title={defense ? "D Situation × Results" : "Situation × Results"}><CrossTable data={pcStats.sit_x_results} /></Card>
+              <Card title={defense ? "D Coverages × Results" : "O Coverages × Results"}><CrossTable data={pcStats.cov_x_results} /></Card>
+              {!defense && <Card title="Situation × Paint Touches"><CrossTable data={pcStats.sit_x_paint} /></Card>}
+              {!defense && <Card title="Situation × Quality Shot"><CrossTable data={pcStats.sit_x_quality} /></Card>}
               <Card title="Paint Touches × Results" className="lg:col-span-2"><CrossTable data={pcStats.paint_x_results} /></Card>
             </div>
           </>
