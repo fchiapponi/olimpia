@@ -10,7 +10,6 @@ Uso:
 """
 
 import csv
-import json
 import re
 import sys
 from pathlib import Path
@@ -21,22 +20,7 @@ out_dir      = BASE / "output"
 out_dir.mkdir(exist_ok=True)
 in_path      = Path(sys.argv[1]) if len(sys.argv) > 1 else out_dir / "input_enriched.csv"
 lineups_path = Path(sys.argv[2]) if len(sys.argv) > 2 else BASE / "input" / "lineups.csv"
-json_path    = BASE / "input" / "sync.json"
 out_path     = out_dir / "input_enriched.csv"
-
-def decode_shot_clock(val):
-    """0.8 → 8, 0.6 → 6 (OCR legge '08' come 0.8). Valori >= 1 invariati."""
-    if val is None:
-        return None
-    v = float(val)
-    return round((v % 1) * 10) if v < 1 else int(v)
-
-# Indice sync.json per (quarter, game_clock) → shot_clock
-sync_index: dict[tuple, float | None] = {}
-for e in json.loads(json_path.read_text()):
-    if e.get("quarter") and e.get("game_clock"):
-        key = (str(e["quarter"]), e["game_clock"])
-        sync_index.setdefault(key, decode_shot_clock(e.get("shot_clock")))
 
 EA7_TEAM_ID = "235"
 
@@ -104,7 +88,7 @@ def find_lineup(quarter, game_clock: str, players: str, is_offense: bool = True)
 
 
 LINEUP_COLS = [
-    "player_name", "action", "action_game_clock", "shot_clock",
+    "player_name", "action", "action_game_clock",
     "team1_score", "team2_score",
     "team1_p1_name", "team1_p2_name", "team1_p3_name", "team1_p4_name", "team1_p5_name",
     "team2_p1_name", "team2_p2_name", "team2_p3_name", "team2_p4_name", "team2_p5_name",
@@ -121,14 +105,10 @@ for row in rows:
     is_offense = row.get("Row", "OFFENSE") == "OFFENSE"
     entry = find_lineup(row.get("QUARTER"), row.get("start_time_game_clock"), row.get("PLAYERS", ""), is_offense)
     action_clock = entry["clock"] if entry else ""
-    q_num = re.search(r"\d+", str(row.get("QUARTER") or ""))
-    shot = sync_index.get((q_num.group() if q_num else "", action_clock), "") if action_clock else ""
 
     for col in LINEUP_COLS:
         if col == "action_game_clock":
             row[col] = action_clock
-        elif col == "shot_clock":
-            row[col] = shot
         else:
             row[col] = entry[col] if entry else ""
     enriched.append(row)

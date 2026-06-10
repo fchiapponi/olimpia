@@ -6,6 +6,7 @@ Usato sia da analyze.py (un foglio per play call) che da
 analyze_players.py (un foglio per giocatore on-court).
 """
 
+import re
 from collections import Counter, defaultdict
 
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -17,6 +18,56 @@ ALT_COLOR    = "D9E1F2"
 
 def pct(n, tot):
     return round(n / tot * 100, 1) if tot else 0
+
+
+# ---------------------------------------------------------------------------
+# Punti per possesso
+# ---------------------------------------------------------------------------
+
+_FT_RE         = re.compile(r"^(\d+)-(\d+)\s*FT$")       # "2-2 FT" -> 2 punti su 2 liberi
+_SHOT_BONUS_RE = re.compile(r"^(\d)P\s*\+\s*(\d)$")      # "2P + 1" -> 2 (tiro) + 1 (libero bonus)
+_SHOT_RE       = re.compile(r"^(IN|\dP)([+-])$")         # "IN+", "2P-", "3P+", ...
+
+
+def result_points(result):
+    """Ritorna (punti, è_possesso) per un valore RESULTS.
+
+    in/2p/3p + = segnato (2 o 3 punti), - = sbagliato (0 punti)
+    X-Y FT = X punti sui liberi (X segnati su Y)
+    F e OB non sono possessi
+    """
+    r = (result or "").strip().upper()
+    if not r or r in ("F", "OB"):
+        return 0, False
+    if r.startswith("TO"):
+        return 0, True
+
+    m = _FT_RE.match(r)
+    if m:
+        return int(m.group(1)), True
+
+    m = _SHOT_BONUS_RE.match(r)
+    if m:
+        return int(m.group(1)) + int(m.group(2)), True
+
+    m = _SHOT_RE.match(r)
+    if m:
+        base = 3 if m.group(1) == "3P" else 2
+        return (base if m.group(2) == "+" else 0), True
+
+    return 0, False
+
+
+def ppp_stats(rows):
+    """Punti totali, possessi e punti-per-possesso per una lista di righe."""
+    points = possessions = 0
+    for r in rows:
+        p, is_poss = result_points(r.get("RESULTS"))
+        if is_poss:
+            points += p
+            possessions += 1
+    ppp = round(points / possessions, 2) if possessions else None
+    return {"points": points, "possessions": possessions, "ppp": ppp}
 
 
 def make_sheet(wb, name):
@@ -183,6 +234,20 @@ def detail_sheet(wb, name, rows):
         n = len(period_rows(rows, q_val))
         intro += [n, ""]
     all_data.append(tuple(intro))
+
+    # PPP (punti per possesso) per periodo
+    ppp_row  = ["PPP"]
+    pts_row  = ["Punti"]
+    poss_row = ["Possessi"]
+    for p_label, q_val in PERIODS:
+        stats = ppp_stats(period_rows(rows, q_val))
+        ppp_row  += [stats["ppp"] if stats["ppp"] is not None else "", ""]
+        pts_row  += [stats["points"], ""]
+        poss_row += [stats["possessions"], ""]
+    all_data.append(tuple(ppp_row))
+    all_data.append(tuple(pts_row))
+    all_data.append(tuple(poss_row))
+
     all_data.append(("",) * len(col_headers))
 
     # Sezioni metriche

@@ -7,10 +7,18 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 
 // ── types ────────────────────────────────────────────────────────────────────
 
+interface PPPStats {
+  points: number
+  possessions: number
+  ppp: number | null
+}
+
 interface PlayCallData {
   play_call: string
   total: number
   by_quarter: Record<string, number>
+  ppp: PPPStats
+  ppp_by_quarter: Record<string, PPPStats>
   results: Record<string, number>
   situations: Record<string, number>
   shot_locations: Record<string, number>
@@ -101,6 +109,43 @@ function PivotTable({ pivot, total }: { pivot: Record<string, Record<string, num
               </tr>
             )
           })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ── PPP table: PPP / Punti / Possessi per quarto ─────────────────────────────
+
+function PPPTable({ ppp, byQuarter }: { ppp: PPPStats; byQuarter: Record<string, PPPStats> }) {
+  const lines: { label: string; total: number | string; get: (s: PPPStats) => number | string }[] = [
+    { label: "PPP",      total: ppp.ppp ?? "—", get: s => s.ppp ?? "—" },
+    { label: "Punti",    total: ppp.points,      get: s => s.points },
+    { label: "Possessi", total: ppp.possessions, get: s => s.possessions },
+  ]
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="border-b border-gray-800">
+            <th className="text-left text-gray-400 py-2 pr-4 font-semibold min-w-[80px]"></th>
+            <th className="text-center text-yellow-600 py-2 px-2 font-semibold">Tot</th>
+            {QUARTERS.map(q => (
+              <th key={q} className="text-center text-gray-500 py-2 px-2 font-semibold">{Q_LABEL[q]}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map(({ label, total, get }, i) => (
+            <tr key={label} className={i%2===1 ? "bg-gray-800/30" : ""}>
+              <td className="py-1.5 pr-4 text-gray-300 font-medium">{label}</td>
+              <td className="py-1.5 px-2 text-center text-white font-bold">{total}</td>
+              {QUARTERS.map(q => (
+                <td key={q} className="py-1.5 px-2 text-center text-gray-400">{byQuarter[q] ? get(byQuarter[q]) : "—"}</td>
+              ))}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
@@ -232,22 +277,25 @@ export default function DashboardPage() {
         {pc && (
           <>
             {/* KPI */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {[
-                { l: "Azioni totali",   v: pc.total },
-                { l: "Paint Touch",     v: `${pc.paint_touch_n} (${pc.total ? Math.round(pc.paint_touch_n/pc.total*100) : 0}%)` },
-                { l: "Quality media",   v: pc.quality_avg ?? "—" },
-                { l: "Broken Play",     v: `${pc.broken_play} (${pc.total ? Math.round(pc.broken_play/pc.total*100) : 0}%)` },
-              ].map(({l,v}) => (
+                { l: "Azioni totali",   v: pc.total, sub: "" },
+                { l: "PPP",             v: pc.ppp.ppp ?? "—", sub: pc.ppp.possessions ? `${pc.ppp.points} pt / ${pc.ppp.possessions} poss` : "" },
+                { l: "Paint Touch",     v: `${pc.paint_touch_n} (${pc.total ? Math.round(pc.paint_touch_n/pc.total*100) : 0}%)`, sub: "" },
+                { l: "Quality media",   v: pc.quality_avg ?? "—", sub: "" },
+                { l: "Broken Play",     v: `${pc.broken_play} (${pc.total ? Math.round(pc.broken_play/pc.total*100) : 0}%)`, sub: "" },
+              ].map(({l,v,sub}) => (
                 <div key={l} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
                   <p className="text-gray-400 text-xs uppercase tracking-widest mb-1">{l}</p>
                   <p className="text-white font-black text-2xl">{v}</p>
+                  {sub && <p className="text-gray-500 text-xs mt-1">{sub}</p>}
                 </div>
               ))}
             </div>
 
             {/* Pivot tables */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <Card title="PPP per quarto"><PPPTable ppp={pc.ppp} byQuarter={pc.ppp_by_quarter} /></Card>
               <Card title="Results"><PivotTable pivot={pc.pivot_results} total={pc.total} /></Card>
               <Card title="Situation"><PivotTable pivot={pc.pivot_situations} total={pc.total} /></Card>
               <Card title="Shot Location"><PivotTable pivot={pc.pivot_shot_loc} total={pc.total} /></Card>

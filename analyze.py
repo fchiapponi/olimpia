@@ -19,7 +19,7 @@ from pathlib import Path
 
 import openpyxl
 
-from report_common import detail_sheet, get_situations
+from report_common import detail_sheet, get_situations, ppp_stats
 
 BASE = Path(__file__).parent
 
@@ -151,6 +151,9 @@ for pc_name in sorted(play_calls, key=lambda x: -play_calls[x]):
         "play_call":   pc_name,
         "total":       N,
         "by_quarter":  {q: sum(1 for r in pc_rows if r["QUARTER"] == q) for q in QUARTERS_LIST},
+        # punti per possesso
+        "ppp":            ppp_stats(pc_rows),
+        "ppp_by_quarter": {q: ppp_stats([r for r in pc_rows if r["QUARTER"] == q]) for q in QUARTERS_LIST},
         # distribuzioni complete
         "results":       dict(Counter(r["RESULTS"] for r in pc_rows if r.get("RESULTS"))),
         "situations":    dict(Counter(s for r in pc_rows for s in get_situations(r))),
