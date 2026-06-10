@@ -17,7 +17,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from report_common import get_play_calls, get_situations, ppp_stats
+from report_common import build_periods, get_play_calls, get_situations, ppp_stats
 
 BASE = Path(__file__).parent
 
@@ -80,81 +80,11 @@ suffix = filter_desc.replace("Row=OFFENSE", "").replace("Row=DEFENSE", "DEFENSE"
 base_name = f"analisi_playcalls{'_' + suffix if suffix else ''}"
 
 # JSON — struttura completa per la dashboard
-QUARTERS_LIST = ["1 Q", "2 Q", "3 Q", "4 Q", "CT"]
-
-def cross(rows_a: list[dict], get_a, get_b) -> dict:
-    """Incrocio: {val_a: {val_b: count}}"""
-    result: dict = {}
-    for r in rows_a:
-        for a in get_a(r):
-            for b in get_b(r):
-                result.setdefault(a, {})
-                result[a][b] = result[a].get(b, 0) + 1
-    return result
-
-def pivot(rows_a: list[dict], get_vals) -> dict:
-    """Per ogni valore, conteggio per quarto: {val: {quarter: count}}"""
-    result: dict = {}
-    for r in rows_a:
-        q = r.get("QUARTER", "")
-        for v in get_vals(r):
-            result.setdefault(v, {q: 0 for q in QUARTERS_LIST})
-            result[v][q] = result[v].get(q, 0) + 1
-    return result
-
-def build_entry(group_rows: list[dict]) -> dict:
-    """Statistiche complete per un gruppo di righe (play call o situation)."""
-    N = len(group_rows)
-
-    get_res  = lambda r: [r["RESULTS"]] if r.get("RESULTS") else []
-    get_sit  = lambda r: get_situations(r)
-    get_pt   = lambda r: [r["PAINT TOUCHES"]] if r.get("PAINT TOUCHES") else ["Senza"]
-    get_cov  = lambda r: [r["O COVERAGES"]] if r.get("O COVERAGES") else []
-    get_ql   = lambda r: [r["QUALITY"]] if r.get("QUALITY") else []
-    get_press= lambda r: [r["PRESSING"]] if r.get("PRESSING") else []
-    get_sl   = lambda r: [r["Shot Location"]] if r.get("Shot Location") else []
-    get_bp   = lambda r: ["Broken Play"] if r.get("PLAN/BROKEN PLAY") else ["Non Broken"]
-
-    qvals = [float(r["QUALITY"]) for r in group_rows if r.get("QUALITY") and r["QUALITY"].replace('.','').isdigit()]
-
-    return {
-        "total":       N,
-        "by_quarter":  {q: sum(1 for r in group_rows if r["QUARTER"] == q) for q in QUARTERS_LIST},
-        # punti per possesso
-        "ppp":            ppp_stats(group_rows),
-        "ppp_by_quarter": {q: ppp_stats([r for r in group_rows if r["QUARTER"] == q]) for q in QUARTERS_LIST},
-        # distribuzioni complete
-        "results":       dict(Counter(r["RESULTS"] for r in group_rows if r.get("RESULTS"))),
-        "situations":    dict(Counter(s for r in group_rows for s in get_situations(r))),
-        "shot_locations":dict(Counter(r["Shot Location"] for r in group_rows if r.get("Shot Location"))),
-        "o_coverages":   dict(Counter(r["O COVERAGES"] for r in group_rows if r.get("O COVERAGES"))),
-        "pressing":      dict(Counter(r["PRESSING"] for r in group_rows if r.get("PRESSING"))),
-        "paint_touches": dict(Counter(r["PAINT TOUCHES"] if r.get("PAINT TOUCHES") else "Senza" for r in group_rows)),
-        "quality":       dict(Counter(r["QUALITY"] for r in group_rows if r.get("QUALITY"))),
-        "broken_play":   sum(1 for r in group_rows if r.get("PLAN/BROKEN PLAY")),
-        "quality_avg":   round(sum(qvals)/len(qvals), 2) if qvals else None,
-        "paint_touch_n": sum(1 for r in group_rows if r.get("PAINT TOUCHES")),
-        # pivot per quarto
-        "pivot_results":    pivot(group_rows, get_res),
-        "pivot_situations": pivot(group_rows, get_sit),
-        "pivot_coverages":  pivot(group_rows, get_cov),
-        "pivot_shot_loc":   pivot(group_rows, get_sl),
-        "pivot_quality":    pivot(group_rows, get_ql),
-        "pivot_pressing":   pivot(group_rows, get_press),
-        "pivot_paint":      pivot(group_rows, get_pt),
-        "pivot_broken":     pivot(group_rows, get_bp),
-        # legami
-        "sit_x_results":  cross(group_rows, get_sit, get_res),
-        "sit_x_paint":    cross(group_rows, get_sit, lambda r: [r["PAINT TOUCHES"]] if r.get("PAINT TOUCHES") else []),
-        "sit_x_quality":  cross(group_rows, get_sit, get_ql),
-        "cov_x_results":  cross(group_rows, get_cov, get_res),
-        "paint_x_results":cross(group_rows, get_pt, get_res),
-    }
 
 json_rows = []
 for pc_name in sorted(play_calls, key=lambda x: -play_calls[x]):
     pc_rows = [r for r in data if pc_name in get_play_calls(r)]
-    json_rows.append({"play_call": pc_name, **build_entry(pc_rows)})
+    json_rows.append({"play_call": pc_name, "periods": build_periods(pc_rows)})
 
 json_path = OUT_DIR / f"{base_name}.json"
 with open(json_path, "w", encoding="utf-8") as f:
@@ -167,7 +97,7 @@ situation_counts = Counter(s for r in data for s in get_situations(r))
 situation_rows = []
 for sit_name in sorted(situation_counts, key=lambda x: -situation_counts[x]):
     sit_rows = [r for r in data if sit_name in get_situations(r)]
-    situation_rows.append({"situation": sit_name, **build_entry(sit_rows)})
+    situation_rows.append({"situation": sit_name, "periods": build_periods(sit_rows)})
 
 sit_base_name = f"analisi_situations{'_' + suffix if suffix else ''}"
 sit_json_path = OUT_DIR / f"{sit_base_name}.json"

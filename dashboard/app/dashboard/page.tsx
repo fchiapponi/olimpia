@@ -13,13 +13,9 @@ interface PPPStats {
   ppp: number | null
 }
 
-interface EntryData {
-  play_call?: string
-  situation?: string
+interface PeriodStats {
   total: number
-  by_quarter: Record<string, number>
   ppp: PPPStats
-  ppp_by_quarter: Record<string, PPPStats>
   results: Record<string, number>
   situations: Record<string, number>
   shot_locations: Record<string, number>
@@ -28,16 +24,9 @@ interface EntryData {
   paint_touches: Record<string, number>
   quality: Record<string, number>
   broken_play: number
+  broken_play_dist: Record<string, number>
   quality_avg: number | null
   paint_touch_n: number
-  pivot_results: Record<string, Record<string, number>>
-  pivot_situations: Record<string, Record<string, number>>
-  pivot_coverages: Record<string, Record<string, number>>
-  pivot_shot_loc: Record<string, Record<string, number>>
-  pivot_quality: Record<string, Record<string, number>>
-  pivot_pressing: Record<string, Record<string, number>>
-  pivot_paint: Record<string, Record<string, number>>
-  pivot_broken: Record<string, Record<string, number>>
   sit_x_results: Record<string, Record<string, number>>
   sit_x_paint: Record<string, Record<string, number>>
   sit_x_quality: Record<string, Record<string, number>>
@@ -45,20 +34,32 @@ interface EntryData {
   paint_x_results: Record<string, Record<string, number>>
 }
 
+interface EntryData {
+  play_call?: string
+  situation?: string
+  player?: string
+  periods: Record<string, PeriodStats>
+}
+
 // ── constants ─────────────────────────────────────────────────────────────────
 
 const RED = "#dc2626"
-const QUARTERS = ["1 Q","2 Q","3 Q","4 Q","CT"]
-const Q_LABEL: Record<string,string> = {"1 Q":"Q1","2 Q":"Q2","3 Q":"Q3","4 Q":"Q4","CT":"CT"}
+const PERIODS = ["ALL","1 Q","2 Q","3 Q","4 Q","CT"]
+const PERIOD_LABEL: Record<string,string> = {"ALL":"Tutta partita","1 Q":"Q1","2 Q":"Q2","3 Q":"Q3","4 Q":"Q4","CT":"CT"}
 
 const MODES = {
   playcalls:  { url: "/api/playcalls",  field: "play_call" as const,  label: "Play Call",  title: "Play Call — clicca per analizzare" },
   situations: { url: "/api/situations", field: "situation" as const, label: "Situation", title: "Situation — clicca per analizzare" },
+  players:    { url: "/api/players",    field: "player" as const,    label: "Giocatori", title: "Giocatori — clicca per analizzare" },
 }
 type Mode = keyof typeof MODES
 
 function entryName(d: EntryData, mode: Mode): string {
   return d[MODES[mode].field] ?? ""
+}
+
+function stats(d: EntryData, period: string): PeriodStats {
+  return d.periods[period] ?? d.periods["ALL"]
 }
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
@@ -82,14 +83,10 @@ function Card({ title, children, className="" }: { title: string; children: Reac
   )
 }
 
-// ── Pivot table: valore × quarto ──────────────────────────────────────────────
+// ── Dist table: valore → conteggio + % ────────────────────────────────────────
 
-function PivotTable({ pivot, total }: { pivot: Record<string, Record<string, number>>; total: number }) {
-  const vals = Object.entries(pivot).sort((a, b) => {
-    const sa = Object.values(a[1]).reduce((s,v)=>s+v,0)
-    const sb = Object.values(b[1]).reduce((s,v)=>s+v,0)
-    return sb - sa
-  })
+function DistTable({ data, total }: { data: Record<string, number>; total: number }) {
+  const vals = Object.entries(data).sort((a, b) => b[1] - a[1])
   if (!vals.length) return <p className="text-gray-600 text-xs">Nessun dato</p>
 
   return (
@@ -98,62 +95,16 @@ function PivotTable({ pivot, total }: { pivot: Record<string, Record<string, num
         <thead>
           <tr className="border-b border-gray-800">
             <th className="text-left text-gray-400 py-2 pr-4 font-semibold min-w-[120px]">Valore</th>
-            <th className="text-center text-gray-400 py-2 px-2 font-semibold">Tot</th>
+            <th className="text-center text-gray-400 py-2 px-2 font-semibold">N</th>
             <th className="text-center text-yellow-600 py-2 px-2 font-semibold">%</th>
-            {QUARTERS.map(q => (
-              <th key={q} className="text-center text-gray-500 py-2 px-2 font-semibold">{Q_LABEL[q]}</th>
-            ))}
           </tr>
         </thead>
         <tbody>
-          {vals.map(([val, qMap], i) => {
-            const n = Object.values(qMap).reduce((s,v)=>s+v,0)
-            return (
-              <tr key={val} className={i%2===1 ? "bg-gray-800/30" : ""}>
-                <td className="py-1.5 pr-4 text-gray-300 font-medium">{val}</td>
-                <td className="py-1.5 px-2 text-center text-white font-bold">{n}</td>
-                <td className="py-1.5 px-2 text-center text-yellow-500">{total ? Math.round(n/total*100) : 0}%</td>
-                {QUARTERS.map(q => (
-                  <td key={q} className="py-1.5 px-2 text-center text-gray-400">{qMap[q]||""}</td>
-                ))}
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-// ── PPP table: PPP / Punti / Possessi per quarto ─────────────────────────────
-
-function PPPTable({ ppp, byQuarter }: { ppp: PPPStats; byQuarter: Record<string, PPPStats> }) {
-  const lines: { label: string; total: number | string; get: (s: PPPStats) => number | string }[] = [
-    { label: "PPP",      total: ppp.ppp ?? "—", get: s => s.ppp ?? "—" },
-    { label: "Punti",    total: ppp.points,      get: s => s.points },
-    { label: "Possessi", total: ppp.possessions, get: s => s.possessions },
-  ]
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs border-collapse">
-        <thead>
-          <tr className="border-b border-gray-800">
-            <th className="text-left text-gray-400 py-2 pr-4 font-semibold min-w-[80px]"></th>
-            <th className="text-center text-yellow-600 py-2 px-2 font-semibold">Tot</th>
-            {QUARTERS.map(q => (
-              <th key={q} className="text-center text-gray-500 py-2 px-2 font-semibold">{Q_LABEL[q]}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map(({ label, total, get }, i) => (
-            <tr key={label} className={i%2===1 ? "bg-gray-800/30" : ""}>
-              <td className="py-1.5 pr-4 text-gray-300 font-medium">{label}</td>
-              <td className="py-1.5 px-2 text-center text-white font-bold">{total}</td>
-              {QUARTERS.map(q => (
-                <td key={q} className="py-1.5 px-2 text-center text-gray-400">{byQuarter[q] ? get(byQuarter[q]) : "—"}</td>
-              ))}
+          {vals.map(([val, n], i) => (
+            <tr key={val} className={i%2===1 ? "bg-gray-800/30" : ""}>
+              <td className="py-1.5 pr-4 text-gray-300 font-medium">{val}</td>
+              <td className="py-1.5 px-2 text-center text-white font-bold">{n}</td>
+              <td className="py-1.5 px-2 text-center text-yellow-500">{total ? Math.round(n/total*100) : 0}%</td>
             </tr>
           ))}
         </tbody>
@@ -196,25 +147,126 @@ function CrossTable({ data }: { data: Record<string, Record<string, number>> }) 
   )
 }
 
+// ── Summary table: una riga per play call / situation / giocatore ────────────
+
+type SortKey = "name" | "total" | "possessions" | "ppp" | "quality" | "paint" | "broken"
+
+function sortValue(r: { name: string; s: PeriodStats }, key: SortKey): number | string {
+  switch (key) {
+    case "name":         return r.name
+    case "total":        return r.s.total
+    case "possessions":  return r.s.ppp.possessions
+    case "ppp":          return r.s.ppp.ppp ?? -Infinity
+    case "quality":      return r.s.quality_avg ?? -Infinity
+    case "paint":        return r.s.paint_touch_n
+    case "broken":       return r.s.broken_play
+  }
+}
+
+function SummaryTable({ data, mode, period, selected, onSelect }: { data: EntryData[]; mode: Mode; period: string; selected: string | null; onSelect: (name: string) => void }) {
+  const [sortKey, setSortKey] = useState<SortKey>("total")
+  const [sortDir, setSortDir] = useState<1 | -1>(-1)
+
+  const allRows = data
+    .map(d => ({ name: entryName(d, mode), s: stats(d, period) }))
+    .filter(({ s }) => s.total > 0)
+
+  if (!allRows.length) return <p className="text-gray-600 text-xs">Nessun dato</p>
+
+  const totalAll = allRows.reduce((sum, { s }) => sum + s.total, 0)
+
+  const pppValues = allRows.map(({ s }) => s.ppp.ppp).filter((v): v is number => v != null)
+  const pppAvg = pppValues.length ? pppValues.reduce((a, b) => a + b, 0) / pppValues.length : null
+
+  const rows = [...allRows].sort((a, b) => {
+    const va = sortValue(a, sortKey), vb = sortValue(b, sortKey)
+    if (typeof va === "string" || typeof vb === "string") return String(va).localeCompare(String(vb)) * sortDir
+    return (va - vb) * sortDir
+  })
+
+  function toggleSort(key: SortKey) {
+    if (key === sortKey) setSortDir(d => (d === 1 ? -1 : 1))
+    else { setSortKey(key); setSortDir(key === "name" ? 1 : -1) }
+  }
+
+  const Th = ({ label, k, align="center", color="text-gray-400" }: { label: string; k: SortKey; align?: "left"|"center"; color?: string }) => (
+    <th onClick={() => toggleSort(k)}
+      className={`${align === "left" ? "text-left pr-4 min-w-[140px]" : "text-center px-2"} ${color} py-2 font-semibold cursor-pointer select-none hover:text-white transition-colors whitespace-nowrap`}>
+      {label}{sortKey === k && (sortDir === 1 ? " ▲" : " ▼")}
+    </th>
+  )
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="border-b border-gray-800">
+            <Th label={MODES[mode].label} k="name" align="left" />
+            <Th label="Giocate" k="total" />
+            <Th label="Frequenza" k="total" color="text-yellow-600" />
+            <Th label="Tiri/Possessi" k="possessions" />
+            <Th label="PPP" k="ppp" />
+            <Th label="Quality Shot" k="quality" />
+            <Th label="Paint Touch" k="paint" />
+            <Th label="Broken Play" k="broken" />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ name, s }, i) => {
+            const isSelected = name === selected
+            const pppColor = s.ppp.ppp == null || pppAvg == null ? "text-gray-300"
+              : s.ppp.ppp > pppAvg ? "text-green-500" : s.ppp.ppp < pppAvg ? "text-red-500" : "text-gray-300"
+            return (
+              <tr key={i} onClick={() => onSelect(name === selected ? "" : name)}
+                className={`cursor-pointer hover:bg-gray-800/60 transition-colors ${i % 2 === 1 ? "bg-gray-800/30" : ""} ${isSelected ? "bg-red-600/20" : ""}`}>
+                <td className="py-1.5 pr-4 text-gray-200 font-medium">{name}</td>
+                <td className="py-1.5 px-2 text-center text-white font-bold">{s.total}</td>
+                <td className="py-1.5 px-2 text-center text-yellow-500">{totalAll ? Math.round(s.total / totalAll * 100) : 0}%</td>
+                <td className="py-1.5 px-2 text-center text-gray-300">{s.ppp.possessions}</td>
+                <td className={`py-1.5 px-2 text-center font-bold ${pppColor}`}>{s.ppp.ppp ?? "—"}</td>
+                <td className="py-1.5 px-2 text-center text-gray-300">{s.quality_avg ?? "—"}</td>
+                <td className="py-1.5 px-2 text-center text-gray-300">{s.paint_touch_n} <span className="text-gray-500">({s.total ? Math.round(s.paint_touch_n / s.total * 100) : 0}%)</span></td>
+                <td className="py-1.5 px-2 text-center text-gray-300">{s.broken_play} <span className="text-gray-500">({s.total ? Math.round(s.broken_play / s.total * 100) : 0}%)</span></td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 
 export default function DashboardPage() {
   const [mode, setMode] = useState<Mode>("playcalls")
+  const [period, setPeriod] = useState<string>("ALL")
   const [data, setData] = useState<EntryData[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<string | null>(null)
+  const [search, setSearch] = useState("")
 
   useEffect(() => {
     setLoading(true)
     setSelected(null)
+    setSearch("")
     fetch(MODES[mode].url).then(r => r.json()).then(d => { setData(d); setLoading(false) })
   }, [mode])
 
   const pc = useMemo(() => selected ? data.find(d => entryName(d, mode) === selected) ?? null : null, [data, selected, mode])
+  const pcStats = pc ? stats(pc, period) : null
+
+  const filteredData = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return data
+    return data.filter(d => entryName(d, mode).toLowerCase().includes(q))
+  }, [data, mode, search])
 
   const overview = useMemo(() =>
-    data.map(d => ({ name: entryName(d, mode), value: d.total })).sort((a,b) => b.value - a.value),
-    [data, mode]
+    filteredData.map(d => ({ name: entryName(d, mode), value: stats(d, period).total }))
+        .filter(d => d.value > 0)
+        .sort((a,b) => b.value - a.value),
+    [filteredData, mode, period]
   )
 
   if (loading) return (
@@ -230,7 +282,7 @@ export default function DashboardPage() {
             <span className="text-white font-black text-xs">EA7</span>
           </div>
           <span className="text-white font-bold text-sm">Olimpia Analytics</span>
-          {pc && <span className="bg-red-600/20 text-red-400 text-xs font-semibold px-2.5 py-1 rounded-lg">{entryName(pc, mode)} — {pc.total} azioni</span>}
+          {pc && pcStats && <span className="bg-red-600/20 text-red-400 text-xs font-semibold px-2.5 py-1 rounded-lg">{entryName(pc, mode)} — {pcStats.total} azioni</span>}
         </div>
         {!pc && (
           <div className="flex bg-gray-800 rounded-lg p-1 print:hidden">
@@ -256,6 +308,21 @@ export default function DashboardPage() {
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
 
+        {/* Selettore periodo + ricerca — sempre visibile */}
+        <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+          <div className="flex flex-wrap gap-2">
+            {PERIODS.map(p => (
+              <button key={p} onClick={() => setPeriod(p)}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${period === p ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}>
+                {PERIOD_LABEL[p]}
+              </button>
+            ))}
+          </div>
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder={`Cerca ${MODES[mode].label.toLowerCase()}...`}
+            className="bg-gray-800 text-white text-xs placeholder-gray-500 rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-red-600 w-48" />
+        </div>
+
         {/* Overview — sempre visibile */}
         <Card title={MODES[mode].title}>
           <ResponsiveContainer width="100%" height={Math.max(280, overview.length * 26)}>
@@ -275,17 +342,22 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </Card>
 
+        {/* Riepilogo — sempre visibile */}
+        <Card title="Riepilogo">
+          <SummaryTable data={filteredData} mode={mode} period={period} selected={selected} onSelect={name => setSelected(name || null)} />
+        </Card>
+
         {/* Dettaglio play call selezionata */}
-        {pc && (
+        {pc && pcStats && (
           <>
             {/* KPI */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {[
-                { l: "Azioni totali",   v: pc.total, sub: "" },
-                { l: "PPP",             v: pc.ppp.ppp ?? "—", sub: pc.ppp.possessions ? `${pc.ppp.points} pt / ${pc.ppp.possessions} poss` : "" },
-                { l: "Paint Touch",     v: `${pc.paint_touch_n} (${pc.total ? Math.round(pc.paint_touch_n/pc.total*100) : 0}%)`, sub: "" },
-                { l: "Quality media",   v: pc.quality_avg ?? "—", sub: "" },
-                { l: "Broken Play",     v: `${pc.broken_play} (${pc.total ? Math.round(pc.broken_play/pc.total*100) : 0}%)`, sub: "" },
+                { l: "Azioni totali",   v: pcStats.total, sub: "" },
+                { l: "PPP",             v: pcStats.ppp.ppp ?? "—", sub: pcStats.ppp.possessions ? `${pcStats.ppp.points} pt / ${pcStats.ppp.possessions} poss` : "" },
+                { l: "Paint Touch",     v: `${pcStats.paint_touch_n} (${pcStats.total ? Math.round(pcStats.paint_touch_n/pcStats.total*100) : 0}%)`, sub: "" },
+                { l: "Quality media",   v: pcStats.quality_avg ?? "—", sub: "" },
+                { l: "Broken Play",     v: `${pcStats.broken_play} (${pcStats.total ? Math.round(pcStats.broken_play/pcStats.total*100) : 0}%)`, sub: "" },
               ].map(({l,v,sub}) => (
                 <div key={l} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
                   <p className="text-gray-400 text-xs uppercase tracking-widest mb-1">{l}</p>
@@ -295,26 +367,25 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            {/* Pivot tables */}
+            {/* Distribuzioni */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              <Card title="PPP per quarto"><PPPTable ppp={pc.ppp} byQuarter={pc.ppp_by_quarter} /></Card>
-              <Card title="Results"><PivotTable pivot={pc.pivot_results} total={pc.total} /></Card>
-              <Card title="Situation"><PivotTable pivot={pc.pivot_situations} total={pc.total} /></Card>
-              <Card title="Shot Location"><PivotTable pivot={pc.pivot_shot_loc} total={pc.total} /></Card>
-              <Card title="O Coverages"><PivotTable pivot={pc.pivot_coverages} total={pc.total} /></Card>
-              <Card title="Quality Shot"><PivotTable pivot={pc.pivot_quality} total={pc.total} /></Card>
-              <Card title="Paint Touches"><PivotTable pivot={pc.pivot_paint} total={pc.total} /></Card>
-              <Card title="Pressing"><PivotTable pivot={pc.pivot_pressing} total={pc.total} /></Card>
-              <Card title="Broken Play"><PivotTable pivot={pc.pivot_broken} total={pc.total} /></Card>
+              <Card title="Results"><DistTable data={pcStats.results} total={pcStats.total} /></Card>
+              <Card title="Situation"><DistTable data={pcStats.situations} total={pcStats.total} /></Card>
+              <Card title="Shot Location"><DistTable data={pcStats.shot_locations} total={pcStats.total} /></Card>
+              <Card title="O Coverages"><DistTable data={pcStats.o_coverages} total={pcStats.total} /></Card>
+              <Card title="Quality Shot"><DistTable data={pcStats.quality} total={pcStats.total} /></Card>
+              <Card title="Paint Touches"><DistTable data={pcStats.paint_touches} total={pcStats.total} /></Card>
+              <Card title="Pressing"><DistTable data={pcStats.pressing} total={pcStats.total} /></Card>
+              <Card title="Broken Play"><DistTable data={pcStats.broken_play_dist} total={pcStats.total} /></Card>
             </div>
 
             {/* Legami */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Card title="Situation × Results"><CrossTable data={pc.sit_x_results} /></Card>
-              <Card title="O Coverages × Results"><CrossTable data={pc.cov_x_results} /></Card>
-              <Card title="Situation × Paint Touches"><CrossTable data={pc.sit_x_paint} /></Card>
-              <Card title="Situation × Quality Shot"><CrossTable data={pc.sit_x_quality} /></Card>
-              <Card title="Paint Touches × Results" className="lg:col-span-2"><CrossTable data={pc.paint_x_results} /></Card>
+              <Card title="Situation × Results"><CrossTable data={pcStats.sit_x_results} /></Card>
+              <Card title="O Coverages × Results"><CrossTable data={pcStats.cov_x_results} /></Card>
+              <Card title="Situation × Paint Touches"><CrossTable data={pcStats.sit_x_paint} /></Card>
+              <Card title="Situation × Quality Shot"><CrossTable data={pcStats.sit_x_quality} /></Card>
+              <Card title="Paint Touches × Results" className="lg:col-span-2"><CrossTable data={pcStats.paint_x_results} /></Card>
             </div>
           </>
         )}
