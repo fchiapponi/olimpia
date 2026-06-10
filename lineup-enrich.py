@@ -1,5 +1,5 @@
 """
-lineup-enrich.py — Aggiunge lineup, punteggio, player_name e action a input_enriched.csv
+lineup-enrich.py — Aggiunge lineup, punteggio, player_name e action a enriched.csv
 
 Filtra lineups.csv ai soli eventi EA7 Emporio Armani Milano.
 Join su (quarter, player_name): trova l'evento dove il giocatore di lineups
@@ -18,9 +18,9 @@ BASE = Path(__file__).parent
 
 out_dir      = BASE / "output"
 out_dir.mkdir(exist_ok=True)
-in_path      = Path(sys.argv[1]) if len(sys.argv) > 1 else out_dir / "input_enriched.csv"
+in_path      = Path(sys.argv[1]) if len(sys.argv) > 1 else out_dir / "enriched.csv"
 lineups_path = Path(sys.argv[2]) if len(sys.argv) > 2 else BASE / "input" / "lineups.csv"
-out_path     = out_dir / "input_enriched.csv"
+out_path     = out_dir / "enriched.csv"
 
 EA7_TEAM_ID = "235"
 

@@ -30,7 +30,7 @@ Con `input/input.csv` e `input/lineups.csv` nella cartella:
 python3 start-time-enrich.py && python3 lineup-enrich.py
 ```
 
-Salva `input_enriched.csv` con le colonne aggiunte:
+Salva `enriched.csv` con le colonne aggiunte:
 
 | Colonna | Contenuto |
 |---|---|

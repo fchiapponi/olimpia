@@ -86,6 +86,11 @@ def get_situations(row):
     return [s.strip() for s in val.split(",")] if val else []
 
 
+def get_play_calls(row):
+    """PLAY CALLS più, se presenti, BOB/SOB (rimesse laterali viste come play call a sé)."""
+    return [v for v in (row.get("PLAY CALLS"), row.get("BOB"), row.get("SOB")) if v]
+
+
 SITUATION_FAMILIES = {
     "P&R":        lambda s: s.startswith("P&R"),
     "1on1":       lambda s: "1on1" in s,

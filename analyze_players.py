@@ -21,7 +21,7 @@ BASE = Path(__file__).parent
 OUT_DIR = BASE / "output"
 OUT_DIR.mkdir(exist_ok=True)
 
-with open(OUT_DIR / "input_enriched.csv", encoding="utf-8") as f:
+with open(OUT_DIR / "enriched.csv", encoding="utf-8") as f:
     rows = list(csv.DictReader(f))
 
 TEAM_COLS = [f"team2_p{i}_name" for i in range(1, 6)]

@@ -13,8 +13,9 @@ interface PPPStats {
   ppp: number | null
 }
 
-interface PlayCallData {
-  play_call: string
+interface EntryData {
+  play_call?: string
+  situation?: string
   total: number
   by_quarter: Record<string, number>
   ppp: PPPStats
@@ -46,10 +47,19 @@ interface PlayCallData {
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
-const RED     = "#dc2626"
-const COLORS  = ["#dc2626","#ef4444","#f97316","#fbbf24","#a3e635","#34d399","#22d3ee","#818cf8","#c084fc","#e879f9","#fb923c","#f472b6"]
+const RED = "#dc2626"
 const QUARTERS = ["1 Q","2 Q","3 Q","4 Q","CT"]
 const Q_LABEL: Record<string,string> = {"1 Q":"Q1","2 Q":"Q2","3 Q":"Q3","4 Q":"Q4","CT":"CT"}
+
+const MODES = {
+  playcalls:  { url: "/api/playcalls",  field: "play_call" as const,  label: "Play Call",  title: "Play Call — clicca per analizzare" },
+  situations: { url: "/api/situations", field: "situation" as const, label: "Situation", title: "Situation — clicca per analizzare" },
+}
+type Mode = keyof typeof MODES
+
+function entryName(d: EntryData, mode: Mode): string {
+  return d[MODES[mode].field] ?? ""
+}
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
@@ -189,25 +199,22 @@ function CrossTable({ data }: { data: Record<string, Record<string, number>> }) 
 // ══════════════════════════════════════════════════════════════════════════════
 
 export default function DashboardPage() {
-  const [data, setData] = useState<PlayCallData[]>([])
+  const [mode, setMode] = useState<Mode>("playcalls")
+  const [data, setData] = useState<EntryData[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch("/api/playcalls").then(r => r.json()).then(d => { setData(d); setLoading(false) })
-  }, [])
+    setLoading(true)
+    setSelected(null)
+    fetch(MODES[mode].url).then(r => r.json()).then(d => { setData(d); setLoading(false) })
+  }, [mode])
 
-  const pc = useMemo(() => selected ? data.find(d => d.play_call === selected) ?? null : null, [data, selected])
+  const pc = useMemo(() => selected ? data.find(d => entryName(d, mode) === selected) ?? null : null, [data, selected, mode])
 
   const overview = useMemo(() =>
-    data.map(d => ({ name: d.play_call, value: d.total })).sort((a,b) => b.value - a.value),
-    [data]
-  )
-
-  const globalByQ = useMemo(() =>
-    QUARTERS.map(q => ({ name: Q_LABEL[q], value: data.reduce((s,d) => s + (d.by_quarter[q]??0), 0) }))
-    .filter(x => x.value > 0),
-    [data]
+    data.map(d => ({ name: entryName(d, mode), value: d.total })).sort((a,b) => b.value - a.value),
+    [data, mode]
   )
 
   if (loading) return (
@@ -223,8 +230,18 @@ export default function DashboardPage() {
             <span className="text-white font-black text-xs">EA7</span>
           </div>
           <span className="text-white font-bold text-sm">Olimpia Analytics</span>
-          {pc && <span className="bg-red-600/20 text-red-400 text-xs font-semibold px-2.5 py-1 rounded-lg">{pc.play_call} — {pc.total} azioni</span>}
+          {pc && <span className="bg-red-600/20 text-red-400 text-xs font-semibold px-2.5 py-1 rounded-lg">{entryName(pc, mode)} — {pc.total} azioni</span>}
         </div>
+        {!pc && (
+          <div className="flex bg-gray-800 rounded-lg p-1 print:hidden">
+            {(Object.keys(MODES) as Mode[]).map(m => (
+              <button key={m} onClick={() => setMode(m)}
+                className={`text-xs font-semibold px-3 py-1 rounded-md transition-colors ${mode === m ? "bg-red-600 text-white" : "text-gray-400 hover:text-white"}`}>
+                {MODES[m].label}
+              </button>
+            ))}
+          </div>
+        )}
         {pc && (
           <button onClick={() => setSelected(null)}
             className="text-xs text-gray-400 hover:text-white bg-gray-800 px-3 py-1.5 rounded-lg">
@@ -240,7 +257,7 @@ export default function DashboardPage() {
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
 
         {/* Overview — sempre visibile */}
-        <Card title="Play Call — clicca per analizzare">
+        <Card title={MODES[mode].title}>
           <ResponsiveContainer width="100%" height={Math.max(280, overview.length * 26)}>
             <BarChart data={overview} layout="vertical"
               onClick={e => e?.activeLabel && setSelected(String(e.activeLabel) === selected ? null : String(e.activeLabel))}>
@@ -250,28 +267,13 @@ export default function DashboardPage() {
               <Tooltip content={<TT />} />
               <Bar dataKey="value" name="Azioni" radius={[0,4,4,0]} className="cursor-pointer">
                 {overview.map((d,i) => (
-                  <Cell key={i} fill={d.name === selected ? "#fff" : COLORS[i%COLORS.length]}
+                  <Cell key={i} fill={d.name === selected ? "#fff" : RED}
                     opacity={selected && d.name !== selected ? 0.25 : 1} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </Card>
-
-        {/* Vista globale senza selezione */}
-        {!pc && (
-          <Card title="Distribuzione per quarto (tutte le play call)">
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={globalByQ}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
-                <XAxis dataKey="name" tick={{fill:"#6b7280",fontSize:12}} />
-                <YAxis tick={{fill:"#6b7280",fontSize:11}} />
-                <Tooltip content={<TT />} />
-                <Bar dataKey="value" name="Azioni" fill={RED} radius={[4,4,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-        )}
 
         {/* Dettaglio play call selezionata */}
         {pc && (

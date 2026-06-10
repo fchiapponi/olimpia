@@ -17,7 +17,7 @@ csv_path  = Path(sys.argv[1]) if len(sys.argv) > 1 else BASE / "input" / "input.
 json_path = Path(sys.argv[2]) if len(sys.argv) > 2 else BASE / "input" / "sync.json"
 out_dir   = BASE / "output"
 out_dir.mkdir(exist_ok=True)
-out_path  = out_dir / "input_enriched.csv"
+out_path  = out_dir / "enriched.csv"
 
 # Carica sync.json e indicizza per video_time
 sync = json.loads(json_path.read_text())
