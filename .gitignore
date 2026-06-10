@@ -1,0 +1,16 @@
+# OS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Node / Next.js
+dashboard/node_modules/
+dashboard/.next/
+dashboard/.next 2/
+dashboard/*.tsbuildinfo
+video-sync/dashboard/.next/
+
+# Cached video clips
+input/temp/

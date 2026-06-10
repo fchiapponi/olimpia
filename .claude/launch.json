@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "olimpia-analytics",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd 'olimpia-analytics' && npm run dev"],
+      "port": 3000
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(npx create-next-app@latest olimpia-analytics --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\")",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(pip3 install *)",
+      "Bash(xattr -cr \"/Users/francescochiapponi/Documents/VSC/computer vision/video-sync/dist/VideoSync.app\")",
+      "Bash(codesign -s - --force --deep \"/Users/francescochiapponi/Documents/VSC/computer vision/video-sync/dist/VideoSync.app\")",
+      "Bash(find \"/Users/francescochiapponi/Documents/VSC/computer vision/video-sync/dist/VideoSync.app\" -name \"._*\" -delete)",
+      "Bash(xattr -rc \"/Users/francescochiapponi/Documents/VSC/computer vision/video-sync/dist/VideoSync.app\")",
+      "Bash(xattr -d com.apple.FinderInfo \"/Users/francescochiapponi/Documents/VSC/computer vision/video-sync/dist/VideoSync.app\")",
+      "Bash(xattr -d com.apple.fileprovider.fpfs#P \"/Users/francescochiapponi/Documents/VSC/computer vision/video-sync/dist/VideoSync.app\")",
+      "Bash(xargs xattr *)",
+      "Bash(xattr -l \"/Users/francescochiapponi/Documents/VSC/computer vision/video-sync/dist/VideoSync.app/Contents/MacOS/VideoSync\")",
+      "Bash(ditto VideoSync.app VideoSync_clean.app)",
+      "Bash(codesign -s - --force --deep VideoSync_clean.app)",
+      "Bash(open \"/Users/francescochiapponi/Documents/VSC/computer vision/video-sync/dist/VideoSync.app\")",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}
