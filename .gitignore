@@ -12,6 +12,5 @@ dashboard/.next 2/
 dashboard/*.tsbuildinfo
 video-sync/dashboard/.next/
 
-# Dati di input/output
-/input/
-/output/
+# Cache clip video (rigenerabile, non serve al dashboard)
+/input/temp/
