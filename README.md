@@ -36,6 +36,21 @@ Salva `enriched.csv` con le colonne aggiunte:
 |---|---|
 | `ocr_quarter` | Quarto (1–4) |
 | `start_time_game_clock` | Orologio `MM:SS` |
+| `shot_clock` | Shot clock (secondi), solo per riferimento — non usato nelle analisi |
 | `team1_score` / `team2_score` | Punteggio |
 | `team1_p1…5_name` | Giocatori Venezia |
 | `team2_p1…5_name` | Giocatori Olimpia |
+
+### 3. Genera le analisi
+
+```bash
+python3 analyze.py && python3 analyze_players.py && python3 analyze_defense.py && python3 analyze_pr.py
+```
+
+Salva in `output/`: `analisi_playcalls.json`, `analisi_situations.json`, `analisi_giocatori.json`, `analisi_giocatori_difesa.json`, `analisi_difesa.json`, `analisi_pr.json`.
+
+### 4. Avvia la dashboard
+
+```bash
+cd dashboard && npm run dev
+```

@@ -22,7 +22,7 @@ export default function Home() {
           </div>
           <div>
             <p className="text-white font-bold">Dashboard</p>
-            <p className="text-red-200 text-sm mt-0.5">Analisi per Play Call</p>
+            <p className="text-red-200 text-sm mt-0.5">Play Call Analysis</p>
           </div>
         </Link>
       </div>

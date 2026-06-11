@@ -2,20 +2,19 @@
 
 import { useEffect, useState, useMemo } from "react"
 import Link from "next/link"
-import { ArrowLeft, Download } from "lucide-react"
+import { ArrowLeft, Download, Repeat2 } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from "recharts"
+import { PPPStats, PERIODS, PERIOD_LABEL, Card, DistTable } from "@/components/shared"
 
 // ── types ────────────────────────────────────────────────────────────────────
-
-interface PPPStats {
-  points: number
-  possessions: number
-  ppp: number | null
-}
 
 interface PeriodStats {
   total: number
   ppp: PPPStats
+  ppp_paint: PPPStats
+  ppp_no_paint: PPPStats
+  ppp_broken: PPPStats
+  ppp_no_broken: PPPStats
   results: Record<string, number>
   situations: Record<string, number>
   shot_locations: Record<string, number>
@@ -44,15 +43,13 @@ interface EntryData {
 // ── constants ─────────────────────────────────────────────────────────────────
 
 const RED = "#dc2626"
-const PERIODS = ["ALL","1 Q","2 Q","3 Q","4 Q","CT"]
-const PERIOD_LABEL: Record<string,string> = {"ALL":"Tutta partita","1 Q":"Q1","2 Q":"Q2","3 Q":"Q3","4 Q":"Q4","CT":"CT"}
 
 const MODES = {
-  playcalls:      { url: "/api/playcalls",       field: "play_call" as const, label: "Play Call",       title: "Play Call — clicca per analizzare" },
-  situations:     { url: "/api/situations",      field: "situation" as const, label: "Situation",       title: "Situation — clicca per analizzare" },
-  players:        { url: "/api/players",         field: "player" as const,    label: "Oncourt",         title: "Oncourt — clicca per analizzare" },
-  difesa:         { url: "/api/difesa",          field: "play_call" as const, label: "Difesa",          title: "Difesa — Play Call avversari, clicca per analizzare" },
-  players_difesa: { url: "/api/players-difesa",  field: "player" as const,    label: "Difesa Oncourt",  title: "Difesa Oncourt — clicca per analizzare" },
+  playcalls:      { url: "/api/playcalls",       field: "play_call" as const, label: "Play Call",       title: "Play Call — click to analyze" },
+  situations:     { url: "/api/situations",      field: "situation" as const, label: "Situation",       title: "Situation — click to analyze" },
+  players:        { url: "/api/players",         field: "player" as const,    label: "Oncourt",         title: "Oncourt — click to analyze" },
+  difesa:         { url: "/api/difesa",          field: "play_call" as const, label: "Defense",         title: "Defense — Opponent Play Calls, click to analyze" },
+  players_difesa: { url: "/api/players-difesa",  field: "player" as const,    label: "Defense Oncourt", title: "Defense Oncourt — click to analyze" },
 }
 type Mode = keyof typeof MODES
 const isDefense = (mode: Mode) => mode === "difesa" || mode === "players_difesa"
@@ -77,52 +74,13 @@ const TT = ({ active, payload, label }: any) => {
   )
 }
 
-function Card({ title, children, className="" }: { title: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`bg-gray-900 border border-gray-800 rounded-2xl p-5 ${className}`}>
-      <p className="text-xs text-gray-400 uppercase tracking-widest mb-4 font-semibold">{title}</p>
-      {children}
-    </div>
-  )
-}
-
-// ── Dist table: valore → conteggio + % ────────────────────────────────────────
-
-function DistTable({ data, total }: { data: Record<string, number>; total: number }) {
-  const vals = Object.entries(data).sort((a, b) => b[1] - a[1])
-  if (!vals.length) return <p className="text-gray-600 text-xs">Nessun dato</p>
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs border-collapse">
-        <thead>
-          <tr className="border-b border-gray-800">
-            <th className="text-left text-gray-400 py-2 pr-4 font-semibold min-w-[120px]">Valore</th>
-            <th className="text-center text-gray-400 py-2 px-2 font-semibold">N</th>
-            <th className="text-center text-yellow-600 py-2 px-2 font-semibold">%</th>
-          </tr>
-        </thead>
-        <tbody>
-          {vals.map(([val, n], i) => (
-            <tr key={val} className={i%2===1 ? "bg-gray-800/30" : ""}>
-              <td className="py-1.5 pr-4 text-gray-300 font-medium">{val}</td>
-              <td className="py-1.5 px-2 text-center text-white font-bold">{n}</td>
-              <td className="py-1.5 px-2 text-center text-yellow-500">{total ? Math.round(n/total*100) : 0}%</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
 // ── Cross table ───────────────────────────────────────────────────────────────
 
 function CrossTable({ data }: { data: Record<string, Record<string, number>> }) {
   const entries = Object.entries(data).sort((a,b) =>
     Object.values(b[1]).reduce((s,v)=>s+v,0) - Object.values(a[1]).reduce((s,v)=>s+v,0)
   )
-  if (!entries.length) return <p className="text-gray-600 text-xs">Nessun dato</p>
+  if (!entries.length) return <p className="text-gray-600 text-xs">No data</p>
 
   return (
     <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
@@ -152,7 +110,7 @@ function CrossTable({ data }: { data: Record<string, Record<string, number>> }) 
 
 // ── Summary table: una riga per play call / situation / giocatore ────────────
 
-type SortKey = "name" | "total" | "points" | "possessions" | "ppp" | "quality" | "paint" | "broken"
+type SortKey = "name" | "total" | "points" | "possessions" | "ppp" | "quality" | "paint" | "broken" | "ppp_paint" | "ppp_no_paint" | "ppp_broken" | "ppp_no_broken"
 
 function sortValue(r: { name: string; s: PeriodStats }, key: SortKey): number | string {
   switch (key) {
@@ -164,6 +122,10 @@ function sortValue(r: { name: string; s: PeriodStats }, key: SortKey): number | 
     case "quality":      return r.s.quality_avg ?? -Infinity
     case "paint":        return r.s.paint_touch_n
     case "broken":       return r.s.broken_play
+    case "ppp_paint":    return r.s.ppp_paint.ppp ?? -Infinity
+    case "ppp_no_paint": return r.s.ppp_no_paint.ppp ?? -Infinity
+    case "ppp_broken":   return r.s.ppp_broken.ppp ?? -Infinity
+    case "ppp_no_broken":return r.s.ppp_no_broken.ppp ?? -Infinity
   }
 }
 
@@ -175,12 +137,15 @@ function SummaryTable({ data, mode, period, selected, onSelect }: { data: EntryD
     .map(d => ({ name: entryName(d, mode), s: stats(d, period) }))
     .filter(({ s }) => s.total > 0)
 
-  if (!allRows.length) return <p className="text-gray-600 text-xs">Nessun dato</p>
+  if (!allRows.length) return <p className="text-gray-600 text-xs">No data</p>
 
   const totalAll = allRows.reduce((sum, { s }) => sum + s.total, 0)
 
   const pppValues = allRows.map(({ s }) => s.ppp.ppp).filter((v): v is number => v != null)
   const pppAvg = pppValues.length ? pppValues.reduce((a, b) => a + b, 0) / pppValues.length : null
+
+  const qualityValues = allRows.map(({ s }) => s.quality_avg).filter((v): v is number => v != null)
+  const qualityAvg = qualityValues.length ? qualityValues.reduce((a, b) => a + b, 0) / qualityValues.length : null
 
   const rows = [...allRows].sort((a, b) => {
     const va = sortValue(a, sortKey), vb = sortValue(b, sortKey)
@@ -208,14 +173,18 @@ function SummaryTable({ data, mode, period, selected, onSelect }: { data: EntryD
         <thead>
           <tr className="border-b border-gray-800">
             <Th label={MODES[mode].label} k="name" align="left" />
-            <Th label="Giocate" k="total" />
-            <Th label="Frequenza" k="total" color="text-yellow-600" />
-            <Th label="Punti" k="points" />
-            <Th label="Tiri/Possessi" k="possessions" />
-            <Th label={defense ? "PPP Concesso" : "PPP"} k="ppp" />
+            <Th label="Plays" k="total" />
+            <Th label="Frequency" k="total" color="text-yellow-600" />
+            <Th label="Points" k="points" />
+            <Th label="Shots/Possessions" k="possessions" />
+            <Th label={defense ? "PPP Allowed" : "PPP"} k="ppp" />
             <Th label="Quality Shot" k="quality" />
             <Th label="Paint Touch" k="paint" />
             {!defense && <Th label="Broken Play" k="broken" />}
+            <Th label="PPP Paint" k="ppp_paint" />
+            <Th label="PPP No Paint" k="ppp_no_paint" />
+            {!defense && <Th label="PPP Broken" k="ppp_broken" />}
+            {!defense && <Th label="PPP No Broken" k="ppp_no_broken" />}
           </tr>
         </thead>
         <tbody>
@@ -224,6 +193,9 @@ function SummaryTable({ data, mode, period, selected, onSelect }: { data: EntryD
             const pppBetter = s.ppp.ppp != null && pppAvg != null && (defense ? s.ppp.ppp < pppAvg : s.ppp.ppp > pppAvg)
             const pppWorse  = s.ppp.ppp != null && pppAvg != null && (defense ? s.ppp.ppp > pppAvg : s.ppp.ppp < pppAvg)
             const pppColor = pppBetter ? "text-green-500" : pppWorse ? "text-red-500" : "text-gray-300"
+            const qualityBetter = s.quality_avg != null && qualityAvg != null && (defense ? s.quality_avg < qualityAvg : s.quality_avg > qualityAvg)
+            const qualityWorse  = s.quality_avg != null && qualityAvg != null && (defense ? s.quality_avg > qualityAvg : s.quality_avg < qualityAvg)
+            const qualityColor = qualityBetter ? "text-green-500" : qualityWorse ? "text-red-500" : "text-gray-300"
             return (
               <tr key={i} onClick={() => onSelect(name === selected ? "" : name)}
                 className={`cursor-pointer hover:bg-gray-800/60 transition-colors ${i % 2 === 1 ? "bg-gray-800/30" : ""} ${isSelected ? "bg-red-600/20" : ""}`}>
@@ -233,9 +205,13 @@ function SummaryTable({ data, mode, period, selected, onSelect }: { data: EntryD
                 <td className="py-1.5 px-2 text-center text-gray-300">{s.ppp.points}</td>
                 <td className="py-1.5 px-2 text-center text-gray-300">{s.ppp.possessions}</td>
                 <td className={`py-1.5 px-2 text-center font-bold ${pppColor}`}>{s.ppp.ppp ?? "—"}</td>
-                <td className="py-1.5 px-2 text-center text-gray-300">{s.quality_avg ?? "—"}</td>
+                <td className={`py-1.5 px-2 text-center font-bold ${qualityColor}`}>{s.quality_avg ?? "—"}</td>
                 <td className="py-1.5 px-2 text-center text-gray-300">{s.paint_touch_n} <span className="text-gray-500">({s.total ? Math.round(s.paint_touch_n / s.total * 100) : 0}%)</span></td>
                 {!defense && <td className="py-1.5 px-2 text-center text-gray-300">{s.broken_play} <span className="text-gray-500">({s.total ? Math.round(s.broken_play / s.total * 100) : 0}%)</span></td>}
+                <td className="py-1.5 px-2 text-center text-gray-300">{s.ppp_paint.ppp ?? "—"} <span className="text-gray-500">({s.ppp_paint.possessions})</span></td>
+                <td className="py-1.5 px-2 text-center text-gray-300">{s.ppp_no_paint.ppp ?? "—"} <span className="text-gray-500">({s.ppp_no_paint.possessions})</span></td>
+                {!defense && <td className="py-1.5 px-2 text-center text-gray-300">{s.ppp_broken.ppp ?? "—"} <span className="text-gray-500">({s.ppp_broken.possessions})</span></td>}
+                {!defense && <td className="py-1.5 px-2 text-center text-gray-300">{s.ppp_no_broken.ppp ?? "—"} <span className="text-gray-500">({s.ppp_no_broken.possessions})</span></td>}
               </tr>
             )
           })}
@@ -280,7 +256,7 @@ export default function DashboardPage() {
   )
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center text-gray-400 text-sm">Caricamento...</div>
+    <div className="min-h-screen flex items-center justify-center text-gray-400 text-sm">Loading...</div>
   )
 
   return (
@@ -292,7 +268,7 @@ export default function DashboardPage() {
             <span className="text-white font-black text-xs">EA7</span>
           </div>
           <span className="text-white font-bold text-sm">Olimpia Analytics</span>
-          {pc && pcStats && <span className="bg-red-600/20 text-red-400 text-xs font-semibold px-2.5 py-1 rounded-lg">{entryName(pc, mode)} — {pcStats.total} azioni</span>}
+          {pc && pcStats && <span className="bg-red-600/20 text-red-400 text-xs font-semibold px-2.5 py-1 rounded-lg">{entryName(pc, mode)} — {pcStats.total} actions</span>}
         </div>
         {!pc && (
           <div className="flex bg-gray-800 rounded-lg p-1 print:hidden">
@@ -307,9 +283,13 @@ export default function DashboardPage() {
         {pc && (
           <button onClick={() => setSelected(null)}
             className="text-xs text-gray-400 hover:text-white bg-gray-800 px-3 py-1.5 rounded-lg">
-            ← Tutte
+            ← All
           </button>
         )}
+        <Link href="/dashboard/pr"
+          className="flex items-center gap-1.5 text-xs text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors print:hidden">
+          <Repeat2 size={13} /> P&R
+        </Link>
         <button onClick={() => window.print()}
           className="flex items-center gap-1.5 text-xs text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors print:hidden">
           <Download size={13} /> PDF
@@ -329,7 +309,7 @@ export default function DashboardPage() {
             ))}
           </div>
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder={`Cerca ${MODES[mode].label.toLowerCase()}...`}
+            placeholder={`Search ${MODES[mode].label.toLowerCase()}...`}
             className="bg-gray-800 text-white text-xs placeholder-gray-500 rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-red-600 w-48" />
         </div>
 
@@ -342,7 +322,7 @@ export default function DashboardPage() {
               <XAxis type="number" tick={{fill:"#6b7280",fontSize:11}} />
               <YAxis type="category" dataKey="name" width={155} tick={{fill:"#9ca3af",fontSize:11}} />
               <Tooltip content={<TT />} />
-              <Bar dataKey="value" name="Azioni" radius={[0,4,4,0]} className="cursor-pointer">
+              <Bar dataKey="value" name="Actions" radius={[0,4,4,0]} className="cursor-pointer">
                 {overview.map((d,i) => (
                   <Cell key={i} fill={d.name === selected ? "#fff" : RED}
                     opacity={selected && d.name !== selected ? 0.25 : 1} />
@@ -353,7 +333,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Riepilogo — sempre visibile */}
-        <Card title="Riepilogo">
+        <Card title="Summary">
           <SummaryTable data={filteredData} mode={mode} period={period} selected={selected} onSelect={name => setSelected(name || null)} />
         </Card>
 
@@ -363,10 +343,10 @@ export default function DashboardPage() {
             {/* KPI */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {[
-                { l: "Azioni totali",   v: pcStats.total, sub: "" },
-                { l: defense ? "PPP Concesso" : "PPP", v: pcStats.ppp.ppp ?? "—", sub: pcStats.ppp.possessions ? `${pcStats.ppp.points} pt / ${pcStats.ppp.possessions} poss` : "" },
+                { l: "Total Actions",   v: pcStats.total, sub: "" },
+                { l: defense ? "PPP Allowed" : "PPP", v: pcStats.ppp.ppp ?? "—", sub: pcStats.ppp.possessions ? `${pcStats.ppp.points} pt / ${pcStats.ppp.possessions} poss` : "" },
                 { l: "Paint Touch",     v: `${pcStats.paint_touch_n} (${pcStats.total ? Math.round(pcStats.paint_touch_n/pcStats.total*100) : 0}%)`, sub: "" },
-                { l: defense ? "Quality avversari" : "Quality media", v: pcStats.quality_avg ?? "—", sub: "" },
+                { l: defense ? "Opponent Quality" : "Avg Quality", v: pcStats.quality_avg ?? "—", sub: "" },
                 ...(defense ? [] : [{ l: "Broken Play", v: `${pcStats.broken_play} (${pcStats.total ? Math.round(pcStats.broken_play/pcStats.total*100) : 0}%)`, sub: "" }]),
               ].map(({l,v,sub}) => (
                 <div key={l} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">

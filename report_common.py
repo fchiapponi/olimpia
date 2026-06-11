@@ -67,6 +67,40 @@ def get_play_calls(row):
     return [v for v in (row.get("PLAY CALLS"), row.get("BOB"), row.get("SOB")) if v]
 
 
+def pct(n, tot):
+    return round(n / tot * 100, 1) if tot else 0
+
+
+def _group_stats(rows, N):
+    qvals = [float(r["QUALITY"]) for r in rows if r.get("QUALITY") and r["QUALITY"].replace('.', '').isdigit()]
+    return {
+        "total":         len(rows),
+        "pct":           pct(len(rows), N),
+        "ppp":           ppp_stats(rows),
+        "quality_avg":   round(sum(qvals) / len(qvals), 2) if qvals else None,
+        "paint_touch_n": sum(1 for r in rows if r.get("PAINT TOUCHES")),
+        "shot_locations": dict(Counter(r["Shot Location"] for r in rows if r.get("Shot Location"))),
+    }
+
+
+def breakdown_by_values(rows, get_vals):
+    """Raggruppa `rows` per i valori ritornati da get_vals(row) (lista, eventualmente
+    multi-valore: una riga può comparire in più gruppi, es. SITUATION con virgole).
+    Ritorna {value: {total, pct, ppp, quality_avg, paint_touch_n, shot_locations}}."""
+    N = len(rows)
+    groups = {}
+    for r in rows:
+        for val in get_vals(r):
+            groups.setdefault(val, []).append(r)
+    return {val: _group_stats(grp, N) for val, grp in groups.items()}
+
+
+def breakdown_by(rows, field):
+    """Raggruppa `rows` per il valore singolo di `field` (righe senza valore escluse).
+    Ritorna {value: {total, pct, ppp, quality_avg, paint_touch_n, shot_locations}}."""
+    return breakdown_by_values(rows, lambda r: [r[field]] if r.get(field) else [])
+
+
 def get_opponent_play_calls(row):
     """OPPONENTS PLAY CALLS, split su virgola e deduplicato (es. 'DRAG, DRAG' -> ['DRAG'])."""
     val = row.get("OPPONENTS PLAY CALLS", "")
@@ -103,26 +137,35 @@ def build_entry(group_rows):
 
     get_res  = lambda r: [r["RESULTS"]] if r.get("RESULTS") else []
     get_sit  = lambda r: get_situations(r)
-    get_pt   = lambda r: [r["PAINT TOUCHES"]] if r.get("PAINT TOUCHES") else ["Senza"]
+    get_pt   = lambda r: [r["PAINT TOUCHES"]] if r.get("PAINT TOUCHES") else ["No Touch"]
     get_cov  = lambda r: [r["O COVERAGES"]] if r.get("O COVERAGES") else []
     get_ql   = lambda r: [r["QUALITY"]] if r.get("QUALITY") else []
 
     qvals = [float(r["QUALITY"]) for r in group_rows if r.get("QUALITY") and r["QUALITY"].replace('.', '').isdigit()]
     broken_n = sum(1 for r in group_rows if r.get("PLAN/BROKEN PLAY"))
 
+    paint_rows    = [r for r in group_rows if r.get("PAINT TOUCHES")]
+    no_paint_rows = [r for r in group_rows if not r.get("PAINT TOUCHES")]
+    broken_rows   = [r for r in group_rows if r.get("PLAN/BROKEN PLAY")]
+    no_broken_rows= [r for r in group_rows if not r.get("PLAN/BROKEN PLAY")]
+
     return {
         "total":       N,
         "ppp":         ppp_stats(group_rows),
+        "ppp_paint":     ppp_stats(paint_rows),
+        "ppp_no_paint":  ppp_stats(no_paint_rows),
+        "ppp_broken":    ppp_stats(broken_rows),
+        "ppp_no_broken": ppp_stats(no_broken_rows),
         # distribuzioni complete
         "results":       dict(Counter(r["RESULTS"] for r in group_rows if r.get("RESULTS"))),
         "situations":    dict(Counter(s for r in group_rows for s in get_situations(r))),
         "shot_locations":dict(Counter(r["Shot Location"] for r in group_rows if r.get("Shot Location"))),
         "o_coverages":   dict(Counter(r["O COVERAGES"] for r in group_rows if r.get("O COVERAGES"))),
         "pressing":      dict(Counter(r["PRESSING"] for r in group_rows if r.get("PRESSING"))),
-        "paint_touches": dict(Counter(r["PAINT TOUCHES"] if r.get("PAINT TOUCHES") else "Senza" for r in group_rows)),
+        "paint_touches": dict(Counter(r["PAINT TOUCHES"] if r.get("PAINT TOUCHES") else "No Touch" for r in group_rows)),
         "quality":       dict(Counter(r["QUALITY"] for r in group_rows if r.get("QUALITY"))),
         "broken_play":      broken_n,
-        "broken_play_dist": {"Broken Play": broken_n, "Non Broken": N - broken_n} if N else {},
+        "broken_play_dist": {"Broken Play": broken_n, "Not Broken": N - broken_n} if N else {},
         "quality_avg":   round(sum(qvals)/len(qvals), 2) if qvals else None,
         "paint_touch_n": sum(1 for r in group_rows if r.get("PAINT TOUCHES")),
         # legami

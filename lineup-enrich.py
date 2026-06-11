@@ -10,6 +10,7 @@ Uso:
 """
 
 import csv
+import json
 import re
 import sys
 from pathlib import Path
@@ -20,9 +21,26 @@ out_dir      = BASE / "output"
 out_dir.mkdir(exist_ok=True)
 in_path      = Path(sys.argv[1]) if len(sys.argv) > 1 else out_dir / "enriched.csv"
 lineups_path = Path(sys.argv[2]) if len(sys.argv) > 2 else BASE / "input" / "lineups.csv"
+json_path    = BASE / "input" / "sync.json"
 out_path     = out_dir / "enriched.csv"
 
 EA7_TEAM_ID = "235"
+
+
+def decode_shot_clock(val):
+    """0.8 → 8, 0.6 → 6 (OCR legge '08' come 0.8). Valori >= 1 invariati."""
+    if val is None:
+        return None
+    v = float(val)
+    return round((v % 1) * 10) if v < 1 else int(v)
+
+
+# Indice sync.json per (quarter, game_clock) → shot_clock
+sync_index: dict[tuple, float | None] = {}
+for e in json.loads(json_path.read_text()):
+    if e.get("quarter") and e.get("game_clock"):
+        key = (str(e["quarter"]), e["game_clock"])
+        sync_index.setdefault(key, decode_shot_clock(e.get("shot_clock")))
 
 
 def clock_to_secs(clock: str) -> int:
@@ -67,28 +85,24 @@ def find_lineup(quarter, game_clock: str, players: str, is_offense: bool = True)
     target     = clock_to_secs(game_clock)
     candidates = lineups_by_quarter[q]
 
+    def best_after(pool):
+        """Evento con clock più vicino, ma sempre <= target (cioè dopo start_time_game_clock)."""
+        after = [e for e in pool if clock_to_secs(e["clock"]) <= target]
+        return max(after, key=lambda e: clock_to_secs(e["clock"])) if after else None
+
     if is_offense:
-        # OFFENSE: solo azioni rilevanti, poi match sul giocatore
+        # OFFENSE: prima prova a matchare azione + giocatore, poi solo azione, poi qualsiasi evento
         eligible = [e for e in candidates if e["action"] in OFFENSE_ACTIONS]
         norm_player = normalize_name(players) if players else ""
         matched = [e for e in eligible if normalize_name(e["player_name"]) == norm_player] if norm_player else []
-        pool = matched if matched else eligible if eligible else candidates
+        return best_after(matched) or best_after(eligible) or best_after(candidates)
     else:
         # DEFENSE: usa tutti gli eventi del quarto
-        pool = candidates
-
-    # Prende il clock subito dopo l'azione (clock <= target, il più vicino)
-    after = [e for e in pool if clock_to_secs(e["clock"]) <= target]
-    if after:
-        return max(after, key=lambda e: clock_to_secs(e["clock"]))
-    if not is_offense:
-        # DEFENSE: nessun evento dopo, prende il più avanzato nel quarto
-        return min(pool, key=lambda e: clock_to_secs(e["clock"]))
-    return min(pool, key=lambda e: abs(clock_to_secs(e["clock"]) - target))
+        return best_after(candidates)
 
 
 LINEUP_COLS = [
-    "player_name", "action", "action_game_clock",
+    "player_name", "pbp", "pbp_game_clock", "shot_clock",
     "team1_score", "team2_score",
     "team1_p1_name", "team1_p2_name", "team1_p3_name", "team1_p4_name", "team1_p5_name",
     "team2_p1_name", "team2_p2_name", "team2_p3_name", "team2_p4_name", "team2_p5_name",
@@ -105,10 +119,16 @@ for row in rows:
     is_offense = row.get("Row", "OFFENSE") == "OFFENSE"
     entry = find_lineup(row.get("QUARTER"), row.get("start_time_game_clock"), row.get("PLAYERS", ""), is_offense)
     action_clock = entry["clock"] if entry else ""
+    q_num = re.search(r"\d+", str(row.get("QUARTER") or ""))
+    shot = sync_index.get((q_num.group() if q_num else "", action_clock), "") if action_clock else ""
 
     for col in LINEUP_COLS:
-        if col == "action_game_clock":
+        if col == "pbp_game_clock":
             row[col] = action_clock
+        elif col == "shot_clock":
+            row[col] = shot
+        elif col == "pbp":
+            row[col] = entry["action"] if entry else ""
         else:
             row[col] = entry[col] if entry else ""
     enriched.append(row)
