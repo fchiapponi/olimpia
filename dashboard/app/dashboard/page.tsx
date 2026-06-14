@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from "react"
 import Link from "next/link"
 import { ArrowLeft, Download, Repeat2 } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from "recharts"
-import { PPPStats, PERIODS, PERIOD_LABEL, Card, DistTable } from "@/components/shared"
+import { PPPStats, PERIODS, PERIOD_LABEL, Card } from "@/components/shared"
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +31,9 @@ interface PeriodStats {
   sit_x_quality: Record<string, Record<string, number>>
   cov_x_results: Record<string, Record<string, number>>
   paint_x_results: Record<string, Record<string, number>>
+  cov_x_quality: Record<string, Record<string, number>>
+  shotloc_x_quality: Record<string, Record<string, number>>
+  paint_x_quality: Record<string, Record<string, number>>
 }
 
 interface EntryData {
@@ -82,6 +85,8 @@ function CrossTable({ data }: { data: Record<string, Record<string, number>> }) 
   )
   if (!entries.length) return <p className="text-gray-600 text-xs">No data</p>
 
+  const grandTotal = entries.reduce((sum, [, bs]) => sum + Object.values(bs).reduce((s,v)=>s+v,0), 0)
+
   return (
     <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
       {entries.map(([a, bs]) => {
@@ -94,10 +99,10 @@ function CrossTable({ data }: { data: Record<string, Record<string, number>> }) 
                 <div key={b} className="flex items-center gap-2 text-xs">
                   <span className="text-gray-400 w-28 truncate">{b}</span>
                   <div className="flex-1 bg-gray-800 rounded-full h-1">
-                    <div className="bg-red-600 h-1 rounded-full" style={{width:`${Math.round(n/tot*100)}%`}} />
+                    <div className="bg-red-600 h-1 rounded-full" style={{width:`${Math.round(n/grandTotal*100)}%`}} />
                   </div>
                   <span className="text-white font-bold w-5 text-right">{n}</span>
-                  <span className="text-gray-500 w-8 text-right">{Math.round(n/tot*100)}%</span>
+                  <span className="text-gray-500 w-8 text-right">{Math.round(n/grandTotal*100)}%</span>
                 </div>
               ))}
             </div>
@@ -357,18 +362,6 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            {/* Distribuzioni */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              <Card title="Results"><DistTable data={pcStats.results} total={pcStats.total} /></Card>
-              <Card title={defense ? "D Situation" : "Situation"}><DistTable data={pcStats.situations} total={pcStats.total} /></Card>
-              <Card title="Shot Location"><DistTable data={pcStats.shot_locations} total={pcStats.total} /></Card>
-              <Card title={defense ? "D Coverages" : "O Coverages"}><DistTable data={pcStats.o_coverages} total={pcStats.total} /></Card>
-              <Card title="Quality Shot"><DistTable data={pcStats.quality} total={pcStats.total} /></Card>
-              <Card title="Paint Touches"><DistTable data={pcStats.paint_touches} total={pcStats.total} /></Card>
-              {!defense && <Card title="Pressing"><DistTable data={pcStats.pressing} total={pcStats.total} /></Card>}
-              {!defense && <Card title="Broken Play"><DistTable data={pcStats.broken_play_dist} total={pcStats.total} /></Card>}
-            </div>
-
             {/* Legami */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card title={defense ? "D Situation × Results" : "Situation × Results"}><CrossTable data={pcStats.sit_x_results} /></Card>
@@ -376,6 +369,9 @@ export default function DashboardPage() {
               {!defense && <Card title="Situation × Paint Touches"><CrossTable data={pcStats.sit_x_paint} /></Card>}
               {!defense && <Card title="Situation × Quality Shot"><CrossTable data={pcStats.sit_x_quality} /></Card>}
               <Card title="Paint Touches × Results" className="lg:col-span-2"><CrossTable data={pcStats.paint_x_results} /></Card>
+              {!defense && <Card title="O Coverages × Quality Shot"><CrossTable data={pcStats.cov_x_quality} /></Card>}
+              {!defense && <Card title="Shot Location × Quality Shot"><CrossTable data={pcStats.shotloc_x_quality} /></Card>}
+              {!defense && <Card title="Paint Touches × Quality Shot" className="lg:col-span-2"><CrossTable data={pcStats.paint_x_quality} /></Card>}
             </div>
           </>
         )}

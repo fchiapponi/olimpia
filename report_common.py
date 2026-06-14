@@ -140,6 +140,7 @@ def build_entry(group_rows):
     get_pt   = lambda r: [r["PAINT TOUCHES"]] if r.get("PAINT TOUCHES") else ["No Touch"]
     get_cov  = lambda r: [r["O COVERAGES"]] if r.get("O COVERAGES") else []
     get_ql   = lambda r: [r["QUALITY"]] if r.get("QUALITY") else []
+    get_loc  = lambda r: [r["Shot Location"]] if r.get("Shot Location") else []
 
     qvals = [float(r["QUALITY"]) for r in group_rows if r.get("QUALITY") and r["QUALITY"].replace('.', '').isdigit()]
     broken_n = sum(1 for r in group_rows if r.get("PLAN/BROKEN PLAY"))
@@ -174,6 +175,9 @@ def build_entry(group_rows):
         "sit_x_quality":  cross(group_rows, get_sit, get_ql),
         "cov_x_results":  cross(group_rows, get_cov, get_res),
         "paint_x_results":cross(group_rows, get_pt, get_res),
+        "cov_x_quality":     cross(group_rows, get_cov, get_ql),
+        "shotloc_x_quality": cross(group_rows, get_loc, get_ql),
+        "paint_x_quality":   cross(group_rows, get_pt, get_ql),
     }
 
 
